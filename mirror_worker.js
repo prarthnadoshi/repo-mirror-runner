@@ -44,15 +44,21 @@ async function mirrorOne(pg, PAT, USER, job) {
   // 2) note upstream pushed_at
   const g = await gh('GET', '/repos/' + source_full, PAT);
   const pushed = g.json && g.json.pushed_at;
-  // 3) git clone --mirror + push heads/tags (skips GitHub's hidden PR refs); temp dir cleaned up after
+  // 3) SNAPSHOT: shallow-clone the default branch, STRIP .github/workflows + git history, push one clean commit.
+  //    Airtight: the mirror contains NO workflow files, so Actions can NEVER run in it -> zero pdoshi7 minutes, zero auto-commits, regardless of timing.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mir-'));
   const up = 'https://github.com/' + source_full + '.git';
   const push = 'https://' + USER + ':' + PAT + '@github.com/' + USER + '/' + name + '.git';
   let ok = false, errtext = '';
-  const c = await git(['clone', '--quiet', '--mirror', up, tmp]);
+  const c = await git(['clone', '--quiet', '--depth', '1', up, tmp]);
   if (c.code === 0) {
-    const p = await git(['-C', tmp, 'push', '--prune', '--force', push, 'refs/heads/*:refs/heads/*', 'refs/tags/*:refs/tags/*']);
-    ok = p.code === 0; errtext = p.out;
+    try { fs.rmSync(path.join(tmp, '.github', 'workflows'), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(path.join(tmp, '.git'), { recursive: true, force: true }); } catch (e) {}
+    await git(['-C', tmp, 'init', '-q', '-b', 'main']);
+    await git(['-C', tmp, 'add', '-A']);
+    const cm = await git(['-C', tmp, '-c', 'user.email=mirror@local', '-c', 'user.name=mirror', 'commit', '-q', '-m', 'mirror snapshot of ' + source_full]);
+    if (cm.code === 0) { const p = await git(['-C', tmp, 'push', '--force', push, 'HEAD:main']); ok = p.code === 0; errtext = p.out; }
+    else { errtext = 'nothing to commit (empty repo): ' + cm.out; }
   } else errtext = c.out;
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
   // 4) record status + both timestamps
