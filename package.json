@@ -1,0 +1,9 @@
+{
+  "name": "mirror-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone parallel GitHub private-mirror worker (reads github_repos.mirrors).",
+  "main": "mirror_worker.js",
+  "scripts": { "start": "node mirror_worker.js" },
+  "dependencies": { "pg": "^8.11.5" }
+}
