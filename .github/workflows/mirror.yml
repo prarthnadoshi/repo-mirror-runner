@@ -1,0 +1,23 @@
+name: repo-mirror
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7 */6 * * *'      # every 6h (GitHub-native; no EC2, no cron server)
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run mirror worker (15 parallel, resumes from Supabase)
+        env:
+          SB_HOST: ${{ secrets.SB_HOST }}
+          SB_PORT: ${{ secrets.SB_PORT }}
+          SB_DB: ${{ secrets.SB_DB }}
+          SB_USER: ${{ secrets.SB_USER }}
+          SB_PASSWORD: ${{ secrets.SB_PASSWORD }}
+          MIRROR_PARALLEL: "15"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          npm install pg --no-audit --no-fund
+          node mirror_worker.js
