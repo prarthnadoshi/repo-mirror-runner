@@ -39,6 +39,8 @@ async function mirrorOne(pg, PAT, USER, job) {
       if (g.status !== 200) { await pg.query("UPDATE github_repos.mirrors SET status='error', attempts=COALESCE(attempts,0)+1, last_error=" + lit('create ' + r.status) + " WHERE id=" + job.id); return; }
     }
   }
+  // 1b) neutralize Actions on the mirror BEFORE pushing -> its own workflows can NEVER run (no pdoshi7 Action minutes, no auto-commits)
+  if (job.status === 'pending' || job.status === 'error') { try { await gh('PUT', '/repos/' + USER + '/' + name + '/actions/permissions', PAT, { enabled: false }); } catch (e) {} }
   // 2) note upstream pushed_at
   const g = await gh('GET', '/repos/' + source_full, PAT);
   const pushed = g.json && g.json.pushed_at;
