@@ -2,14 +2,17 @@ name: repo-mirror
 on:
   workflow_dispatch:
   schedule:
-    - cron: '7 */6 * * *'      # every 6h (GitHub-native; no EC2, no cron server)
+    - cron: '7 */6 * * *'      # backup trigger; self-redispatch is primary
+concurrency:
+  group: repo-mirror
+  cancel-in-progress: false      # only one chain runs; a 2nd trigger queues, never overlaps
 jobs:
   mirror:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
-      - name: Run mirror worker (15 parallel, resumes from Supabase)
+      - name: Run mirror worker (15 parallel, ~5.5h then hand off)
         env:
           SB_HOST: ${{ secrets.SB_HOST }}
           SB_PORT: ${{ secrets.SB_PORT }}
@@ -20,4 +23,9 @@ jobs:
           GIT_TERMINAL_PROMPT: "0"
         run: |
           npm install pg --no-audit --no-fund
-          node mirror_worker.js
+          timeout 330m node mirror_worker.js || true
+      - name: Re-dispatch self (continuous - no gap, no waiting on cron)
+        if: always()
+        run: |
+          curl -s -X POST -H "Authorization: token ${{ secrets.DISPATCH_PAT }}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/prarthnadoshi/repo-mirror-runner/actions/workflows/mirror.yml/dispatches -d '{"ref":"main"}'
+          echo "next run dispatched -> mirroring is continuous"
